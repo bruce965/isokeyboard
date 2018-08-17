@@ -1,5 +1,6 @@
 import './types/lib'  // types and polyfills
 
+import { mod } from './util/math';
 import LoadingScreen from './loading-screen/lib'
 import SamplePlayer, { ISamplePlayback } from './sample-player/lib'
 import IsomorphicKeyboard from './isomorphic-keyboard/lib'
@@ -28,22 +29,16 @@ async function main() {
 	})
 
 	const keyboard = new IsomorphicKeyboard({
-		keys: [
-			{ row: 1, column: 1, label: 'D₄', color: 'lightblue', data: { frequency: getNoteFrequency('D4') } },
-			{ row: 2, column: 1, label: 'F♯₄', color: 'cornflowerblue', data: { frequency: getNoteFrequency('F#4') } },
-			{ row: 3, column: 1, label: 'D♯₄', color: 'cornflowerblue', data: { frequency: getNoteFrequency('D#4') } },
-			{ row: 4, column: 1, label: 'G₄', color: 'white', data: { frequency: getNoteFrequency('G4') } },
-			{ row: 5, column: 1, label: 'E₄', color: 'white', data: { frequency: getNoteFrequency('E4') } },
-			{ row: 6, column: 1, label: 'G♯₄', color: 'darkseagreen', data: { frequency: getNoteFrequency('G#4') } },
-			{ row: 7, column: 1, label: 'F₄', color: 'white', data: { frequency: getNoteFrequency('F4') } },
-			{ row: 8, column: 1, label: 'A₄', color: 'white', data: { frequency: getNoteFrequency('A4') } },
-		]
+		verticalIncrement: 7,
+		diagonalIncrement: 4,
+		getKeyLabel: semitoneIndex => getNoteName(semitoneIndex),
+		getKeyColor: semitoneIndex => getKeyColor(semitoneIndex)
 	})
 
 	const currentKeys: { [eventId: number]: ISamplePlayback } = {}
 
 	keyboard.keyActivated.subscribe(e => {
-		currentKeys[e.eventId] = player.play('piano', e.data.frequency, 0.5)
+		currentKeys[e.eventId] = player.play('piano', getNoteFrequency(e.semitoneIndex), 0.5)
 	})
 
 	keyboard.keyDeactivated.subscribe(e => {
@@ -64,69 +59,93 @@ async function loadAudioBuffer(audioContext: AudioContext, url: string): Promise
 	return audioBuffer
 }
 
-function getNoteFrequency(name: string): number {
-	const baseLength = (name[1] == 'b' || name[1] == '#') ? 2 : 1
-
-	// name = C#4
-	// note = C#
-	// octave = 4
-	const note = name.substr(0, baseLength)
-	const octave = parseInt(name.substr(baseLength))
-
-	let noteOffset: number = 0
-	switch (note) {
-		case 'C':
-			noteOffset = 0
+function getNoteName(semitoneIndex: number) {
+	let noteName: string
+	switch (mod(semitoneIndex, 12)) {
+		case 0:
+			noteName = 'A'
 			break
-		case 'C#':
-		case 'Db':
-			noteOffset = 1
+		case 1:
+			noteName = 'A♯'
 			break
-		case 'D':
-			noteOffset = 2
+		case 2:
+			noteName = 'B'
 			break
-		case 'D#':
-		case 'Eb':
-			noteOffset = 3
+		case 3:
+			noteName = 'C'
 			break
-		case 'E':
-			noteOffset = 4
+		case 4:
+			noteName = 'C♯'
 			break
-		case 'F':
-			noteOffset = 5
+		case 5:
+			noteName = 'D'
 			break
-		case 'F#':
-		case 'Gb':
-			noteOffset = 6
+		case 6:
+			noteName = 'D♯'
 			break
-		case 'G':
-			noteOffset = 7
+		case 7:
+			noteName = 'E'
 			break
-		case 'G#':
-		case 'Ab':
-			noteOffset = 8
+		case 8:
+			noteName = 'F'
 			break
-		case 'A':
-			noteOffset = 9
+		case 9:
+			noteName = 'F♯'
 			break
-		case 'A#':
-		case 'Bb':
-			noteOffset = 10
+		case 10:
+			noteName = 'G'
 			break
-		case 'B':
-			noteOffset = 11
+		case 11:
+			noteName = 'G♯'
 			break
 		default:
-			console.warn(`Invalid note name “${note}”.`)
-			noteOffset = 0
+			noteName = '?'
+			break
 	}
 
-	const A4_INDEX = 9 + 12 * 4
+	const LOOKUP = '₀₁₂₃₄₅₆₇₈₉'
 
-	const noteIndex = noteOffset + 12 * octave
+	const octaveIndex = Math.floor(semitoneIndex / 12) + 4
 
+	let octaveName = ''
+	let partialOctaveIndex = Math.abs(octaveIndex)
+	while (partialOctaveIndex > 0 || octaveName == '') {
+		octaveName = LOOKUP[partialOctaveIndex % 10] + octaveName
+		partialOctaveIndex = Math.floor(partialOctaveIndex / 10)
+	}
+
+	if (octaveIndex < 0)
+		octaveName = '₋' + octaveName
+
+	return noteName + octaveName
+}
+
+function getKeyColor(semitoneIndex: number) {
+	switch (mod(semitoneIndex, 12)) {
+		case 0:
+		case 2:
+		case 3:
+		case 7:
+		case 8:
+		case 10:
+			return 'white'
+		case 1:
+		case 4:
+		case 6:
+		case 9:
+			return 'cornflowerblue'
+		case 5:
+			return 'lightblue'
+		case 11:
+			return 'darkseagreen'
+		default:
+			return 'black' as never
+	}
+}
+
+function getNoteFrequency(semitoneIndex: number): number {
 	// https://en.wikipedia.org/wiki/Musical_note#Note_frequency_(hertz)
-	return Math.pow(2, (noteIndex - A4_INDEX) / 12) * 440
+	return Math.pow(2, semitoneIndex / 12) * 440
 }
 
 main()
