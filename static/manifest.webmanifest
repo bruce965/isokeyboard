@@ -1,0 +1,15 @@
+{
+	"background_color": "white",
+	"description": "Custom isomorphic keyboard generator.",
+	"display": "fullscreen",
+	"icons": [
+	  {
+	  "src": "icons/192.png",
+	  "sizes": "192x192",
+	  "type": "image/png"
+	  }
+	],
+	"name": "Isomorphic Keyboard",
+	"short_name": "IsoKeyboard",
+	"start_url": "index.htm"
+}
