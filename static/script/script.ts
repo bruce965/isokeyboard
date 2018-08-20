@@ -29,6 +29,8 @@ async function main() {
 	})
 
 	const keyboard = new IsomorphicKeyboard({
+		highlightActiveKeys: true,
+		mapToKeyboard: true,
 		verticalIncrement: 7,
 		diagonalIncrement: 4,
 		getKeyLabel: semitoneIndex => getNoteName(semitoneIndex),
@@ -46,7 +48,8 @@ async function main() {
 		delete currentKeys[e.eventId]
 	})
 
-	document.body.appendChild(keyboard.el)
+	document.body.appendChild(keyboard.el);
+	(keyboard.el as Element as HTMLElement).focus()
 
 	// loading is completed, hide loading screen
 	LoadingScreen.hide()
@@ -128,18 +131,18 @@ function getKeyColor(semitoneIndex: number) {
 		case 7:
 		case 8:
 		case 10:
-			return 'white'
+			return { bg: 'white', fg: 'black' }
 		case 1:
 		case 4:
 		case 6:
 		case 9:
-			return 'cornflowerblue'
+			return { bg: '#444', fg: 'white' }
 		case 5:
-			return 'lightblue'
+			return { bg: 'paleturquoise', fg: 'black' }
 		case 11:
-			return 'darkseagreen'
+			return { bg: 'cornflowerblue', fg: 'black' }
 		default:
-			return 'black' as never
+			return { bg: 'black', fg: 'black' } as never
 	}
 }
 
