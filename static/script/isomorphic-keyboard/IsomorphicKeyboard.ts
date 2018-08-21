@@ -182,6 +182,7 @@ export default class IsomorphicKeyboard {
 		this.el.addEventListener('mousedown', e => {
 			if (e.buttons & 1) {
 				e.preventDefault()
+				;(this.el as Element as HTMLElement).focus()
 
 				// get keys under the cursor
 				const keys = getTouchedKeys(e)
@@ -240,6 +241,7 @@ export default class IsomorphicKeyboard {
 		// handle touch
 		this.el.addEventListener('touchstart', e => {
 			e.preventDefault()
+			;(this.el as Element as HTMLElement).focus()
 
 			for (let i = 0; i < e.changedTouches.length; i++) {
 				const touch = e.changedTouches.item(i) as Touch
@@ -322,8 +324,10 @@ export default class IsomorphicKeyboard {
 				 56: allKeys.filter(k => k.x ==  1 && k.y == -3)[0],  // 8
 				 57: allKeys.filter(k => k.x ==  2 && k.y == -3)[0],  // 9
 				 48: allKeys.filter(k => k.x ==  3 && k.y == -4)[0],  // 0
-				173: allKeys.filter(k => k.x ==  4 && k.y == -4)[0],  // -
-				 61: allKeys.filter(k => k.x ==  5 && k.y == -5)[0],  // =
+				173: allKeys.filter(k => k.x ==  4 && k.y == -4)[0],  // -  // Firefox
+				189: allKeys.filter(k => k.x ==  4 && k.y == -4)[0],  // -  // Chrome
+				 61: allKeys.filter(k => k.x ==  5 && k.y == -5)[0],  // =  // Firefox
+				187: allKeys.filter(k => k.x ==  5 && k.y == -5)[0],  // =  // Chrome
 				  8: allKeys.filter(k => k.x ==  6 && k.y == -5)[0],  // Backspace
 
 				  9: allKeys.filter(k => k.x == -6 && k.y ==  2)[0],  // Tab
@@ -350,7 +354,8 @@ export default class IsomorphicKeyboard {
 				 74: allKeys.filter(k => k.x ==  2 && k.y == -1)[0],  // J
 				 75: allKeys.filter(k => k.x ==  3 && k.y == -2)[0],  // K
 				 76: allKeys.filter(k => k.x ==  4 && k.y == -2)[0],  // L
-				 59: allKeys.filter(k => k.x ==  5 && k.y == -3)[0],  // ;
+				 59: allKeys.filter(k => k.x ==  5 && k.y == -3)[0],  // ;  // Firefox
+				186: allKeys.filter(k => k.x ==  5 && k.y == -3)[0],  // ;  // Chrome
 				222: allKeys.filter(k => k.x ==  6 && k.y == -3)[0],  // '
 				//220: allKeys.filter(k => k.x ==  7 && k.y == -4)[0],  // \
 				//13: allKeys.filter(k => k.x ==  8 && k.y == -4)[0],  // Enter
@@ -371,7 +376,6 @@ export default class IsomorphicKeyboard {
 			}
 
 			;(this.el as Element as HTMLElement).addEventListener('keydown', e => {
-				console.log(e.keyCode)
 				const key = KEYCODE_TO_KEY[e.keyCode]
 				if (key != null) {
 					e.preventDefault()

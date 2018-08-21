@@ -1,0 +1,103 @@
+
+:local .buttons {
+	position: fixed;
+
+	display: flex;
+	flex-direction: column;
+
+	top: 0;
+	left: 0;
+
+	padding: .2em;
+}
+
+:local .button {
+	cursor: pointer;
+
+	min-width: 1.4em;
+
+	border-radius: .2em;
+
+	font-size: 1.2em;
+
+	background: white;
+	border: 1px solid black;
+	box-shadow: 0 .1em .2em 0 fade(black, 20%);
+
+	padding: .2em 1em;
+	margin: .1em;
+
+	transition: background-color 120ms ease;
+
+	&:hover {
+		background: lightgray;
+	}
+
+	&:active {
+		background: darkgray;
+	}
+}
+
+:local .settings-dialog {
+	box-sizing: border-box;
+
+	top: 0;
+	left: 0;
+
+	width: 100vw;
+	height: 100vh;
+	overflow: hidden;
+
+	margin: 0;
+	padding: 2em;
+	border: 0;
+
+	background: transparent;
+
+	.panel {
+		box-sizing: border-box;
+
+		width: 100%;
+		height: 100%;
+		overflow-y: auto;
+
+		padding: 1em;
+		border-radius: .4em;
+
+		background: white;
+		border: 1px solid black;
+		box-shadow: 0 .2em .4em 0 fade(black, 40%);
+		opacity: 0;
+
+		transform: translateY(100%);
+		transition: transform 500ms ease, opacity 300ms ease;
+
+		&:after {
+			content: '';
+			display: block;
+			height: 1em;
+		}
+	}
+
+	&::backdrop, & + _backdrop {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+
+		background: fade(black, 0%);
+		transition: background-color 500ms ease;
+	}
+
+	&.fade-in {
+		.panel {
+			transform: translateY(0);
+			opacity: 1;
+		}
+
+		&::backdrop, & + _backdrop {
+			background: fade(black, 20%);
+		}
+	}
+}

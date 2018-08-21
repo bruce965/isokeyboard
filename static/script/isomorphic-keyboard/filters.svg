@@ -1,0 +1,9 @@
+<svg xmlns='http://www.w3.org/2000/svg'>
+	<filter id="grayscale">
+		<feComponentTransfer>
+			<feFuncR type="linear" slope="0.7"/>
+			<feFuncG type="linear" slope="0.7"/>
+			<feFuncB type="linear" slope="0.7"/>
+		</feComponentTransfer>
+	</filter>
+</svg>

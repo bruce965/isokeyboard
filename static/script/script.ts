@@ -4,6 +4,7 @@ import { mod } from './util/math';
 import LoadingScreen from './loading-screen/lib'
 import SamplePlayer, { ISamplePlayback } from './sample-player/lib'
 import IsomorphicKeyboard from './isomorphic-keyboard/lib'
+import LayoutGenerator from './layout-generator/lib'
 
 async function main() {
 	const audioCtx = new AudioContext({ latencyHint: 'interactive' })
@@ -37,6 +38,8 @@ async function main() {
 		getKeyColor: semitoneIndex => getKeyColor(semitoneIndex)
 	})
 
+	const settings = new LayoutGenerator()
+
 	const currentKeys: { [eventId: number]: ISamplePlayback } = {}
 
 	keyboard.keyActivated.subscribe(e => {
@@ -48,11 +51,14 @@ async function main() {
 		delete currentKeys[e.eventId]
 	})
 
-	document.body.appendChild(keyboard.el);
-	(keyboard.el as Element as HTMLElement).focus()
+	document.body.appendChild(keyboard.el)
+	document.body.appendChild(settings.el)
 
 	// loading is completed, hide loading screen
 	LoadingScreen.hide()
+
+	// focus (to enable keyboard input)
+	;(keyboard.el as Element as HTMLElement).focus()
 }
 
 async function loadAudioBuffer(audioContext: AudioContext, url: string): Promise<AudioBuffer> {
@@ -102,7 +108,7 @@ function getNoteName(semitoneIndex: number) {
 			noteName = 'G♯'
 			break
 		default:
-			noteName = '?'
+			noteName = '?' as never
 			break
 	}
 
