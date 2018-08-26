@@ -1,4 +1,4 @@
-import * as JSX from "../jsx/lib";
+import * as JSX from "../jsx";
 import { cssUpdate, delay } from "../util/async";
 import classes from './style.less';
 

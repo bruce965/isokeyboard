@@ -1,10 +1,13 @@
-import './types/lib'  // types and polyfills
+import './polyfill'
 
 import { mod } from './util/math';
-import LoadingScreen from './loading-screen/lib'
-import SamplePlayer, { ISamplePlayback } from './sample-player/lib'
-import IsomorphicKeyboard from './isomorphic-keyboard/lib'
-import LayoutGenerator from './layout-generator/lib'
+import LoadingScreen from './loading-screen'
+import SamplePlayer, { ISamplePlayback } from './sample-player'
+import IsomorphicKeyboard from './isomorphic-keyboard'
+import LayoutGenerator from './layout-generator'
+
+// DEBUG
+import './midi'
 
 async function main() {
 	const audioCtx = new AudioContext({ latencyHint: 'interactive' })
