@@ -1,15 +1,15 @@
 import { ObservableSource } from '../util/observable'
-import { intersect, except } from '../util/collections'
+import { except } from '../util/collections'
 import { mod } from '../util/math'
+import { IKey, IKeyTouchElement, KEY_ID_SYMBOL } from './IKey';
 import classes from './style.less'
+import KeyManager from './KeyManager';
 
 const ISOMORPHIC_KEYBOARD_CLASSNAME = classes['isomorphic-keyboard']
 const HEXAGON_KEY_CLASSNAME = classes['hexagon-key']
 const BORDER_CLASSNAME = classes['border']
 const LABEL_CLASSNAME = classes['label']
 const ACTIVE_CLASSNAME = classes['active']
-
-const KEY_ID_SYMBOL = Symbol()
 
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
@@ -47,26 +47,15 @@ export interface IKeyEvent {
 	semitoneIndex: number
 }
 
-interface IKeyTouchElement extends SVGElement {
-	[KEY_ID_SYMBOL]: number
-}
-
-interface IKey {
-	keyId: number
-	x: number
-	y: number
-	styleEl: SVGElement
-	touchEl: SVGElement & IKeyTouchElement
-	keyActivated(): void
-	keyDeactivated(): void
-}
-
 /**
  * Isomorphic keyboard layout generator.
  */
 export default class IsomorphicKeyboard {
 
 	public readonly el: SVGSVGElement
+
+	private readonly _keyManager = new KeyManager()
+	private readonly _keys: { nextId: number, keys: { [keyId: number]: IKey } } = { nextId: 1, keys: {} }
 
 	private readonly _highlightActiveKeys: boolean
 	private readonly _mapToKeyboard: boolean
@@ -114,8 +103,6 @@ export default class IsomorphicKeyboard {
 		touch.transform.baseVal.initialize(transformTranslate)
 		touch.transform.baseVal.appendItem(transformRotate)
 
-		const allKeys: IKey[] = []
-
 		let nextEventId = 0
 
 		// TODO: only add keys that are visible on the screen.
@@ -130,53 +117,50 @@ export default class IsomorphicKeyboard {
 
 				const { styleEl, touchEl } = addKey(this.el, hexagons, touch, x, y, settings.getKeyColor(semitoneIndex), settings.getKeyLabel(semitoneIndex), rotation)
 
-				const keyId = allKeys.length
+				const keyId = this._keys.nextId++
 				;(touchEl as IKeyTouchElement)[KEY_ID_SYMBOL] = keyId
 
-				allKeys.push({
+				this._keys.keys[keyId] = {
 					keyId,
 					x, y,
 					styleEl: styleEl,
 					touchEl: touchEl as IKeyTouchElement,
 					keyActivated: () => (this.keyActivated as ObservableSource<IKeyEvent>).next({ eventId: activateEventId = nextEventId++, semitoneIndex: semitoneIndex }),
 					keyDeactivated: () => (this.keyDeactivated as ObservableSource<IKeyEvent>).next({ eventId: activateEventId, semitoneIndex: semitoneIndex })
-				})
+				}
 			}
 		}
 
-		this._handleInput(allKeys)
+		this._handleInput()
 	}
 
-	private _handleInput(allKeys: IKey[]): void {
-		const getTouchedKeys = (e: MouseEvent|Touch) => {
-			const keys: IKey[] = []
-			for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
-				const id = (el as IKeyTouchElement)[KEY_ID_SYMBOL]
-				if (id != null)
-					keys.push(allKeys[id])
+	private *_getTouchedKeyIds(e: MouseEvent|Touch): IterableIterator<number> {
+		const keys: IKey[] = []
+		for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+			const id = (el as IKeyTouchElement)[KEY_ID_SYMBOL]
+			if (id != null)
+				yield id
+		}
+
+		return keys
+	}
+
+	private _handleInput(): void {
+		this._keyManager.keyActivated.subscribe(e => {
+			const key = this._keys.keys[e.keyId]
+			if (!e.isReactivation) {
+				key.keyActivated()
+				key.styleEl.classList.add(ACTIVE_CLASSNAME)
 			}
+		})
 
-			return keys
-		}
-
-		const mouseActiveKeys: IKey[] = []
-		const touchActiveKeys: { [touchId: number]: IKey[] } = {}
-		const keyboardActiveKeys: IKey[] = []
-		const allTouchActiveKeys = () => {
-			const keys: IKey[] = []
-			for (const touchId in touchActiveKeys)
-				keys.push(...touchActiveKeys[touchId])
-			return keys
-		}
-		const allActiveKeys = () => {
-			const keys = allTouchActiveKeys()
-			keys.push(...mouseActiveKeys)
-			keys.push(...keyboardActiveKeys)
-			return keys
-		}
-		const allActiveKeysExceptTouch = (touchId: number) => {
-			return except(allActiveKeys(), touchActiveKeys[touchId] || [])
-		}
+		this._keyManager.keyDeactivated.subscribe(e => {
+			const key = this._keys.keys[e.keyId]
+			if (e.isInactive) {
+				key.keyDeactivated()
+				key.styleEl.classList.remove(ACTIVE_CLASSNAME)
+			}
+		})
 
 		// handle mouse
 		this.el.addEventListener('mousedown', e => {
@@ -184,84 +168,54 @@ export default class IsomorphicKeyboard {
 				e.preventDefault()
 				;(this.el as Element as HTMLElement).focus()
 
-				// get keys under the cursor
-				const keys = getTouchedKeys(e)
+				const currentKeys = this._getTouchedKeyIds(e)
 
-				// activate keys that are not already active
-				for (const key of except(keys, allActiveKeys())) {
-					if (this._highlightActiveKeys)
-						key.styleEl.classList.add(ACTIVE_CLASSNAME)
-
-					key.keyActivated()
-				}
-
-				for (const key of except(keys, mouseActiveKeys))
-					mouseActiveKeys.push(key)
+				// activate keys under the cursor
+				for (const keyId of currentKeys)
+					this._keyManager.activate('mouse', keyId)
 			}
 		})
 		this.el.addEventListener('mousemove', e => {
 			if (e.buttons & 1) {
 				e.preventDefault()
 
-				// get keys under the cursor
-				const keys = getTouchedKeys(e)
+				const previousKeys = [...this._keyManager.getActiveKeyIds('mouse')]
+				const currentKeys = [...this._getTouchedKeyIds(e)]
 
-				// deactivate keys that are not under the cursor anymore, unless under a touch or active by keyboard
-				for (const key of except(mouseActiveKeys, keys, allTouchActiveKeys(), keyboardActiveKeys)) {
-					key.styleEl.classList.remove(ACTIVE_CLASSNAME)
-					key.keyDeactivated()
-				}
+				// deactivate keys that are not under the cursor anymore
+				for (const keyId of except(previousKeys, currentKeys))
+					this._keyManager.deactivate('mouse', keyId)
 
-				// activate keys that are under the cursor, unless already active
-				for (const key of except(keys, allActiveKeys())) {
-					if (this._highlightActiveKeys)
-						key.styleEl.classList.add(ACTIVE_CLASSNAME)
-
-					key.keyActivated()
-				}
-
-				mouseActiveKeys.length = 0
-				mouseActiveKeys.push(...keys)
+				// activate keys under the cursor
+				for (const keyId of currentKeys)
+					this._keyManager.activate('mouse', keyId)
 			}
 		})
 		this.el.addEventListener('mouseup', e => {
 			if (!(e.buttons & 1)) {
 				e.preventDefault()
 
-				// deactivate all keys under the cursor, unless also under a touch or active by keyboard
-				for (const key of except(mouseActiveKeys, allTouchActiveKeys(), keyboardActiveKeys)) {
-					key.styleEl.classList.remove(ACTIVE_CLASSNAME)
-					key.keyDeactivated()
-				}
+				const previousKeys = [...this._keyManager.getActiveKeyIds('mouse')]
 
-				mouseActiveKeys.length = 0
+				// deactivate all keys activated with the cursor
+				for (const keyId of previousKeys)
+					this._keyManager.deactivate('mouse', keyId)
 			}
 		})
 
 		// handle touch
 		this.el.addEventListener('touchstart', e => {
 			e.preventDefault()
-			;(this.el as Element as HTMLElement).focus()
 
 			for (let i = 0; i < e.changedTouches.length; i++) {
 				const touch = e.changedTouches.item(i) as Touch
+				;(this.el as Element as HTMLElement).focus()
 
-				if (!touchActiveKeys[touch.identifier])
-					touchActiveKeys[touch.identifier] = []
+				const currentKeys = this._getTouchedKeyIds(touch)
 
-				// get keys under the touch
-				const keys = getTouchedKeys(touch)
-
-				// activate keys that are not already active
-				for (const key of except(keys, allActiveKeys())) {
-					if (this._highlightActiveKeys)
-						key.styleEl.classList.add(ACTIVE_CLASSNAME)
-
-					key.keyActivated()
-				}
-
-				for (const key of except(keys, touchActiveKeys[touch.identifier]))
-					touchActiveKeys[touch.identifier].push(key)
+				// activate keys under this touch
+				for (const keyId of currentKeys)
+					this._keyManager.activate(`touch_${touch.identifier}`, keyId)
 			}
 		})
 		this.el.addEventListener('touchmove', e => {
@@ -270,28 +224,16 @@ export default class IsomorphicKeyboard {
 			for (let i = 0; i < e.changedTouches.length; i++) {
 				const touch = e.changedTouches.item(i) as Touch
 
-				if (!touchActiveKeys[touch.identifier])
-					touchActiveKeys[touch.identifier] = []
+				const previousKeys = [...this._keyManager.getActiveKeyIds(`touch_${touch.identifier}`)]
+				const currentKeys = [...this._getTouchedKeyIds(touch)]
 
-				// get keys under the touch
-				const keys = getTouchedKeys(touch)
+				// deactivate keys that are not under this touch anymore
+				for (const keyId of except(previousKeys, currentKeys))
+					this._keyManager.deactivate(`touch_${touch.identifier}`, keyId)
 
-				// deactivate keys that are not under the touch anymore, unless under the cursor or another touch or active by keyboard
-				for (const key of except(touchActiveKeys[touch.identifier], keys, allActiveKeysExceptTouch(touch.identifier), keyboardActiveKeys)) {
-					key.styleEl.classList.remove(ACTIVE_CLASSNAME)
-					key.keyDeactivated()
-				}
-
-				// activate keys that are under the touch, unless already active
-				for (const key of except(keys, allActiveKeys())) {
-					if (this._highlightActiveKeys)
-						key.styleEl.classList.add(ACTIVE_CLASSNAME)
-
-					key.keyActivated()
-				}
-
-				touchActiveKeys[touch.identifier].length = 0
-				touchActiveKeys[touch.identifier].push(...keys)
+				// activate keys under this touch
+				for (const keyId of currentKeys)
+					this._keyManager.activate(`touch_${touch.identifier}`, keyId)
 			}
 		})
 		this.el.addEventListener('touchend', e => {
@@ -300,79 +242,86 @@ export default class IsomorphicKeyboard {
 			for (let i = 0; i < e.changedTouches.length; i++) {
 				const touch = e.changedTouches.item(i) as Touch
 
-				// deactivate all keys under the touch, unless also under the cursor or another touch or active by keyboard
-				for (const key of except(touchActiveKeys[touch.identifier], allActiveKeysExceptTouch(touch.identifier), keyboardActiveKeys)) {
-					key.styleEl.classList.remove(ACTIVE_CLASSNAME)
-					key.keyDeactivated()
-				}
+				const previousKeys = [...this._keyManager.getActiveKeyIds(`touch_${touch.identifier}`)]
 
-				delete touchActiveKeys[touch.identifier]
+				// deactivate all keys activated with this touch
+				for (const keyId of previousKeys)
+					this._keyManager.deactivate('mouse', keyId)
 			}
 		})
 
 		// handle keyboard
 		if (this._mapToKeyboard) {
+			const getKey = (x: number, y: number): IKey => {
+				for (const keyId in this._keys.keys)
+					if (this._keys.keys[keyId].x == x && this._keys.keys[keyId].y == y)
+						return this._keys.keys[keyId]
+
+				console.error(`Key not found: [${x}, ${y}]`)
+				return undefined as never
+			}
+
 			const KEYCODE_TO_KEY: { [keyCode: number]: IKey } = {
-				192: allKeys.filter(k => k.x == -7 && k.y ==  1)[0],  // `
-				 49: allKeys.filter(k => k.x == -6 && k.y ==  1)[0],  // 1
-				 50: allKeys.filter(k => k.x == -5 && k.y ==  0)[0],  // 2
-				 51: allKeys.filter(k => k.x == -4 && k.y ==  0)[0],  // 3
-				 52: allKeys.filter(k => k.x == -3 && k.y == -1)[0],  // 4
-				 53: allKeys.filter(k => k.x == -2 && k.y == -1)[0],  // 5
-				 54: allKeys.filter(k => k.x == -1 && k.y == -2)[0],  // 6
-				 55: allKeys.filter(k => k.x ==  0 && k.y == -2)[0],  // 7
-				 56: allKeys.filter(k => k.x ==  1 && k.y == -3)[0],  // 8
-				 57: allKeys.filter(k => k.x ==  2 && k.y == -3)[0],  // 9
-				 48: allKeys.filter(k => k.x ==  3 && k.y == -4)[0],  // 0
-				173: allKeys.filter(k => k.x ==  4 && k.y == -4)[0],  // -  // Firefox
-				189: allKeys.filter(k => k.x ==  4 && k.y == -4)[0],  // -  // Chrome
-				 61: allKeys.filter(k => k.x ==  5 && k.y == -5)[0],  // =  // Firefox
-				187: allKeys.filter(k => k.x ==  5 && k.y == -5)[0],  // =  // Chrome
-				  8: allKeys.filter(k => k.x ==  6 && k.y == -5)[0],  // Backspace
+				192: getKey(-7,  1),  // `
+				 49: getKey(-6,  1),  // 1
+				 50: getKey(-5,  0),  // 2
+				 51: getKey(-4,  0),  // 3
+				 52: getKey(-3, -1),  // 4
+				 53: getKey(-2, -1),  // 5
+				 54: getKey(-1, -2),  // 6
+				 55: getKey( 0, -2),  // 7
+				 56: getKey( 1, -3),  // 8
+				 57: getKey( 2, -3),  // 9
+				 48: getKey( 3, -4),  // 0
+				173: getKey( 4, -4),  // -  // Firefox
+				189: getKey( 4, -4),  // -  // Chrome
+				 61: getKey( 5, -5),  // =  // Firefox
+				187: getKey( 5, -5),  // =  // Chrome
+				  8: getKey( 6, -5),  // Backspace
 
-				  9: allKeys.filter(k => k.x == -6 && k.y ==  2)[0],  // Tab
-				 81: allKeys.filter(k => k.x == -5 && k.y ==  1)[0],  // Q
-				 87: allKeys.filter(k => k.x == -4 && k.y ==  1)[0],  // W
-				 69: allKeys.filter(k => k.x == -3 && k.y ==  0)[0],  // E
-				 82: allKeys.filter(k => k.x == -2 && k.y ==  0)[0],  // R
-				 84: allKeys.filter(k => k.x == -1 && k.y == -1)[0],  // T
-				 89: allKeys.filter(k => k.x ==  0 && k.y == -1)[0],  // Y
-				 85: allKeys.filter(k => k.x ==  1 && k.y == -2)[0],  // U
-				 73: allKeys.filter(k => k.x ==  2 && k.y == -2)[0],  // I
-				 79: allKeys.filter(k => k.x ==  3 && k.y == -3)[0],  // O
-				 80: allKeys.filter(k => k.x ==  4 && k.y == -3)[0],  // P
-				219: allKeys.filter(k => k.x ==  5 && k.y == -4)[0],  // [
-				221: allKeys.filter(k => k.x ==  6 && k.y == -4)[0],  // ]
+				  9: getKey(-6,  2),  // Tab
+				 81: getKey(-5,  1),  // Q
+				 87: getKey(-4,  1),  // W
+				 69: getKey(-3,  0),  // E
+				 82: getKey(-2,  0),  // R
+				 84: getKey(-1, -1),  // T
+				 89: getKey( 0, -1),  // Y
+				 85: getKey( 1, -2),  // U
+				 73: getKey( 2, -2),  // I
+				 79: getKey( 3, -3),  // O
+				 80: getKey( 4, -3),  // P
+				219: getKey( 5, -4),  // [
+				221: getKey( 6, -4),  // ]
 
-				 20: allKeys.filter(k => k.x == -5 && k.y ==  2)[0],  // Caps Lock
-				 65: allKeys.filter(k => k.x == -4 && k.y ==  2)[0],  // A
-				 83: allKeys.filter(k => k.x == -3 && k.y ==  1)[0],  // S
-				 68: allKeys.filter(k => k.x == -2 && k.y ==  1)[0],  // D
-				 70: allKeys.filter(k => k.x == -1 && k.y ==  0)[0],  // F
-				 71: allKeys.filter(k => k.x ==  0 && k.y ==  0)[0],  // G
-				 72: allKeys.filter(k => k.x ==  1 && k.y == -1)[0],  // H
-				 74: allKeys.filter(k => k.x ==  2 && k.y == -1)[0],  // J
-				 75: allKeys.filter(k => k.x ==  3 && k.y == -2)[0],  // K
-				 76: allKeys.filter(k => k.x ==  4 && k.y == -2)[0],  // L
-				 59: allKeys.filter(k => k.x ==  5 && k.y == -3)[0],  // ;  // Firefox
-				186: allKeys.filter(k => k.x ==  5 && k.y == -3)[0],  // ;  // Chrome
-				222: allKeys.filter(k => k.x ==  6 && k.y == -3)[0],  // '
-				//220: allKeys.filter(k => k.x ==  7 && k.y == -4)[0],  // \
-				//13: allKeys.filter(k => k.x ==  8 && k.y == -4)[0],  // Enter
+				 20: getKey(-5,  2),  // Caps Lock
+				 65: getKey(-4,  2),  // A
+				 83: getKey(-3,  1),  // S
+				 68: getKey(-2,  1),  // D
+				 70: getKey(-1,  0),  // F
+				 71: getKey( 0,  0),  // G
+				 72: getKey( 1, -1),  // H
+				 74: getKey( 2, -1),  // J
+				 75: getKey( 3, -2),  // K
+				 76: getKey( 4, -2),  // L
+				 59: getKey( 5, -3),  // ;  // Firefox
+				186: getKey( 5, -3),  // ;  // Chrome
+				222: getKey( 6, -3),  // '
+				//220: getKey( 7, -4),  // \
+				//13: getKey( 8, -4),  // Enter
 
-				//16: allKeys.filter(k => k.x == -5 && k.y ==  3)[0],  // Shift
-				//220: allKeys.filter(k => k.x == -4 && k.y ==  3)[0],  // \
-				 90: allKeys.filter(k => k.x == -3 && k.y ==  2)[0],  // Z
-				 88: allKeys.filter(k => k.x == -2 && k.y ==  2)[0],  // X
-				 67: allKeys.filter(k => k.x == -1 && k.y ==  1)[0],  // C
-				 86: allKeys.filter(k => k.x ==  0 && k.y ==  1)[0],  // V
-				 66: allKeys.filter(k => k.x ==  1 && k.y ==  0)[0],  // B
-				 78: allKeys.filter(k => k.x ==  2 && k.y ==  0)[0],  // N
-				 77: allKeys.filter(k => k.x ==  3 && k.y == -1)[0],  // M
-				188: allKeys.filter(k => k.x ==  4 && k.y == -1)[0],  // ,
-				190: allKeys.filter(k => k.x ==  5 && k.y == -2)[0],  // .
-				191: allKeys.filter(k => k.x ==  6 && k.y == -2)[0],  // /
-				//16: allKeys.filter(k => k.x ==  7 && k.y == -3)[0],  // Shift
+				//16: getKey(-5,  3),  // Shift
+				//220: getKey(-4,  3),  // \
+				 90: getKey(-3,  2),  // Z
+				 88: getKey(-2,  2),  // X
+				 67: getKey(-1,  1),  // C
+				 86: getKey( 0,  1),  // V
+				 66: getKey( 1,  0),  // B
+				 78: getKey( 2,  0),  // N
+				 77: getKey( 3, -1),  // M
+				188: getKey( 4, -1),  // ,
+				190: getKey( 5, -2),  // .
+				191: getKey( 6, -2),  // /
+				//16: getKey( 7, -3),  // Shift
 			}
 
 			;(this.el as Element as HTMLElement).addEventListener('keydown', e => {
@@ -380,16 +329,8 @@ export default class IsomorphicKeyboard {
 				if (key != null) {
 					e.preventDefault()
 
-					// activate key, unless already active
-					if (allActiveKeys().indexOf(key) == -1) {
-						if (this._highlightActiveKeys)
-							key.styleEl.classList.add(ACTIVE_CLASSNAME)
-
-						key.keyActivated()
-					}
-
-					if (keyboardActiveKeys.indexOf(key) == -1)
-						keyboardActiveKeys.push(key)
+					// activate corresponding key
+					this._keyManager.activate('keyboard', key.keyId)
 				}
 			})
 			;(this.el as Element as HTMLElement).addEventListener('keyup', e => {
@@ -397,14 +338,8 @@ export default class IsomorphicKeyboard {
 				if (key != null) {
 					e.preventDefault()
 
-					// deactivate key, unless under the cursor or under a touch
-					if (mouseActiveKeys.indexOf(key) == -1 && allTouchActiveKeys().indexOf(key) == -1) {
-						key.styleEl.classList.remove(ACTIVE_CLASSNAME)
-						key.keyDeactivated()
-					}
-
-					const index = keyboardActiveKeys.indexOf(key)
-					keyboardActiveKeys.splice(index, 1)
+					// deactivate corresponding key
+					this._keyManager.deactivate('keyboard', key.keyId)
 				}
 			})
 		}
