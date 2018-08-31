@@ -15,10 +15,10 @@ export default class SamplePlayback implements ISamplePlayback {
 		return this._isActive
 	}
 
-	public get vibrato(): number {
+	public get pitchBend(): number {
 		return this._source.playbackRate.value / this._basePlaybackRate
 	}
-	public set vibrato(value: number) {
+	public set pitchBend(value: number) {
 		this._source.playbackRate.setTargetAtTime(value * this._basePlaybackRate, this._audioCtx.currentTime, 0.01)
 	}
 
@@ -67,7 +67,7 @@ export default class SamplePlayback implements ISamplePlayback {
 		this._isActive = false
 
 		this._gain.gain.setTargetAtTime(0, this._audioCtx.currentTime, this._decay / 1000 / 3)
-		
+
 		await delay(this._decay * 2)  // after this delay, we are at 0.0025% the inizial gain; silent enough to stop the playback
 		this._source.stop()
 

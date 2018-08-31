@@ -4,6 +4,7 @@ import { mod } from '../util/math'
 import { IKey, IKeyTouchElement, KEY_ID_SYMBOL } from './IKey';
 import classes from './style.less'
 import KeyManager from './KeyManager';
+import { miditest } from '../midi';
 
 const ISOMORPHIC_KEYBOARD_CLASSNAME = classes['isomorphic-keyboard']
 const HEXAGON_KEY_CLASSNAME = classes['hexagon-key']
@@ -47,6 +48,10 @@ export interface IKeyEvent {
 	semitoneIndex: number
 }
 
+export interface IPitchBendEvent extends IKeyEvent {
+	pitchBend: number
+}
+
 /**
  * Isomorphic keyboard layout generator.
  */
@@ -60,8 +65,9 @@ export default class IsomorphicKeyboard {
 	private readonly _highlightActiveKeys: boolean
 	private readonly _mapToKeyboard: boolean
 
-	public readonly keyActivated: Observable<IKeyEvent> = new ObservableSource<IKeyEvent>()
+	public readonly keyActivated: Observable<IPitchBendEvent> = new ObservableSource<IPitchBendEvent>()
 	public readonly keyDeactivated: Observable<IKeyEvent> = new ObservableSource<IKeyEvent>()
+	public readonly pitchBending: Observable<IPitchBendEvent> = new ObservableSource<IPitchBendEvent>()
 
 	constructor(settings: IIsomorphicKeyboardSettings) {
 		this.el = document.createElementNS(SVG_NAMESPACE, 'svg')
@@ -108,7 +114,7 @@ export default class IsomorphicKeyboard {
 		// TODO: only add keys that are visible on the screen.
 		for (let x = -Math.floor(KEYBOARD_SIZE_X/HEXAGON_SIZE_X); x < KEYBOARD_SIZE_X/HEXAGON_SIZE_X; x++) {
 			for (let y = -Math.floor(KEYBOARD_SIZE_Y/HEXAGON_SIZE_Y); y < KEYBOARD_SIZE_Y/HEXAGON_SIZE_Y; y++) {
-				let activateEventId: number
+				const activateEventIdBySource: { [source: string]: number } = {}
 
 				const diagonal = x
 				const vertical = -y + Math.floor(-x/2)
@@ -125,8 +131,27 @@ export default class IsomorphicKeyboard {
 					x, y,
 					styleEl: styleEl,
 					touchEl: touchEl as IKeyTouchElement,
-					keyActivated: () => (this.keyActivated as ObservableSource<IKeyEvent>).next({ eventId: activateEventId = nextEventId++, semitoneIndex: semitoneIndex }),
-					keyDeactivated: () => (this.keyDeactivated as ObservableSource<IKeyEvent>).next({ eventId: activateEventId, semitoneIndex: semitoneIndex })
+					keyActivated: (source, pitchBend) => {
+						(this.keyActivated as ObservableSource<IPitchBendEvent>).next({
+							eventId: activateEventIdBySource[source] = nextEventId++,
+							semitoneIndex: semitoneIndex,
+							pitchBend: pitchBend
+						})
+					},
+					keyDeactivated: source => {
+						(this.keyDeactivated as ObservableSource<IKeyEvent>).next({
+							eventId: activateEventIdBySource[source],
+							semitoneIndex: semitoneIndex
+						})
+						delete activateEventIdBySource[source]
+					},
+					pitchBending: (source, pitchBend) => {
+						(this.pitchBending as ObservableSource<IPitchBendEvent>).next({
+							eventId: activateEventIdBySource[source],
+							semitoneIndex: semitoneIndex,
+							pitchBend: pitchBend
+						})
+					}
 				}
 			}
 		}
@@ -148,19 +173,29 @@ export default class IsomorphicKeyboard {
 	private _handleInput(): void {
 		this._keyManager.keyActivated.subscribe(e => {
 			const key = this._keys.keys[e.keyId]
-			if (!e.isReactivation) {
-				key.keyActivated()
+
+			key.keyActivated(e.category, e.pitchBend)
+
+			if (!e.isReactivation)
 				key.styleEl.classList.add(ACTIVE_CLASSNAME)
-			}
 		})
 
 		this._keyManager.keyDeactivated.subscribe(e => {
 			const key = this._keys.keys[e.keyId]
-			if (e.isInactive) {
-				key.keyDeactivated()
+
+			key.keyDeactivated(e.category)
+
+			if (e.isInactive)
 				key.styleEl.classList.remove(ACTIVE_CLASSNAME)
-			}
 		})
+
+		this._keyManager.pitchBending.subscribe(e => {
+			const key = this._keys.keys[e.keyId]
+
+			key.pitchBending(e.category, e.pitchBend)
+		})
+
+		miditest(this._keyManager, this._keys.keys)
 
 		// handle mouse
 		this.el.addEventListener('mousedown', e => {
@@ -171,8 +206,11 @@ export default class IsomorphicKeyboard {
 				const currentKeys = this._getTouchedKeyIds(e)
 
 				// activate keys under the cursor
-				for (const keyId of currentKeys)
+				for (const keyId of currentKeys) {
 					this._keyManager.activate('mouse', keyId)
+
+					console.debug(`PRESSED keyId=${keyId}`)
+				}
 			}
 		})
 		this.el.addEventListener('mousemove', e => {

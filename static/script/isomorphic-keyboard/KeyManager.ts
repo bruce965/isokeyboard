@@ -11,6 +11,7 @@ export interface IKeyEvent {
 }
 
 export interface IKeyActivatedEvent extends IKeyEvent {
+	pitchBend: number
 	/** `true` if key was already active in another category. */
 	isReactivation: boolean
 }
@@ -18,6 +19,10 @@ export interface IKeyActivatedEvent extends IKeyEvent {
 export interface IKeyDeactivatedEvent extends IKeyEvent {
 	/** `true` if key not active in other categories. */
 	isInactive: boolean
+}
+
+export interface IPitchBendEvent extends IKeyEvent {
+	pitchBend: number
 }
 
 /**
@@ -32,6 +37,7 @@ export default class KeyManager {
 
 	public readonly keyActivated: Observable<IKeyActivatedEvent> = new ObservableSource<IKeyActivatedEvent>()
 	public readonly keyDeactivated: Observable<IKeyDeactivatedEvent> = new ObservableSource<IKeyDeactivatedEvent>()
+	public readonly pitchBending: Observable<IPitchBendEvent> = new ObservableSource<IPitchBendEvent>()
 
 	/** Check if a key is currently active. */
 	public isActive(keyId: number): boolean {
@@ -53,7 +59,7 @@ export default class KeyManager {
 				yield +keyId
 	}
 
-	public activate(category: string, keyId: number): boolean {
+	public activate(category: string, keyId: number, pitchBend: number = 1): boolean {
 		let categoryKeys
 		const x = this._category.get(category)
 		if (x)
@@ -72,7 +78,7 @@ export default class KeyManager {
 		categoryKeys.active[keyId] = true
 
 		// fire event
-		;(this.keyActivated as ObservableSource<IKeyActivatedEvent>).next({ eventId: KeyManager._nextEventId++, keyId, category, isReactivation })
+		;(this.keyActivated as ObservableSource<IKeyActivatedEvent>).next({ eventId: KeyManager._nextEventId++, keyId, category, pitchBend, isReactivation })
 
 		return true
 	}
@@ -103,5 +109,10 @@ export default class KeyManager {
 		;(this.keyDeactivated as ObservableSource<IKeyDeactivatedEvent>).next({ eventId: KeyManager._nextEventId++, keyId, category, isInactive: !isActive })
 
 		return true
+	}
+
+	public pitchBend(category: string, keyId: number, pitchBend: number): void {
+		// fire event
+		;(this.pitchBending as ObservableSource<IPitchBendEvent>).next({ eventId: KeyManager._nextEventId++, keyId, category, pitchBend })
 	}
 }

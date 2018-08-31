@@ -5,7 +5,7 @@ export default interface ISamplePlayback {
 	readonly isActive: boolean
 
 	/** Frequency multiplier relative to base frequency. */
-	vibrato: number
+	pitchBend: number
 
 	/** Playback strength. */
 	strength: number

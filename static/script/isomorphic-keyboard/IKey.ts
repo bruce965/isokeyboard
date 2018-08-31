@@ -7,8 +7,9 @@ export interface IKey {
 	y: number
 	styleEl: SVGElement
 	touchEl: SVGElement & IKeyTouchElement
-	keyActivated(): void
-	keyDeactivated(): void
+	keyActivated(source: string, pitchBend: number): void
+	keyDeactivated(source: string): void
+	pitchBending(source: string, pitchBend: number): void
 }
 
 export interface IKeyTouchElement extends SVGElement {

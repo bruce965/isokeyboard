@@ -47,11 +47,18 @@ async function main() {
 
 	keyboard.keyActivated.subscribe(e => {
 		currentKeys[e.eventId] = player.play('piano', getNoteFrequency(e.semitoneIndex), 0.5)
+
+		if (e.pitchBend != 1)
+			currentKeys[e.eventId].pitchBend = e.pitchBend
 	})
 
 	keyboard.keyDeactivated.subscribe(e => {
 		currentKeys[e.eventId].stop()
 		delete currentKeys[e.eventId]
+	})
+
+	keyboard.pitchBending.subscribe(e => {
+		currentKeys[e.eventId].pitchBend = e.pitchBend
 	})
 
 	document.body.appendChild(keyboard.el)
